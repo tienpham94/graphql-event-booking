@@ -1,16 +1,19 @@
-const express = require('express')
-const bodyParser = require('body-parser')
-const graphqlHttp = require('express-graphql')
-const { buildSchema } = require('graphql')
+const express = require("express")
+const bodyParser = require("body-parser")
+const graphqlHttp = require("express-graphql")
+const { buildSchema } = require("graphql")
+const mongoose = require("mongoose")
+
+const Event = require("./models/event")
 
 const app = express()
 
 app.use(bodyParser.json())
 
-const events = []
-
-app.use('/graphql', graphqlHttp({
-  schema: buildSchema(`
+app.use(
+  "/graphql",
+  graphqlHttp({
+    schema: buildSchema(`
     type Event {
       _id: ID!
       title: String!
@@ -39,23 +42,47 @@ app.use('/graphql', graphqlHttp({
       mutation: RootMutation
     }
     `),
-  rootValue: {
-    events: () => {
-      return events
-    },
-    createEvent: (args) => {
-      const event = {
-        _id: Math.random().toString(),
-        title: args.eventInput.title,
-        description: args.eventInput.description,
-        price: args.eventInput.price,
-        date: args.eventInput.date
+    rootValue: {
+      events: () => {
+        return Event.find()
+          .then(events => {
+            return events.map(event => {
+              return { ...event._doc, _id: event.id };
+            });
+          })
+          .catch(err => {
+            throw err;
+          });
+      },
+      createEvent: args => {
+        const event = new Event({
+          title: args.eventInput.title,
+          description: args.eventInput.description,
+          price: args.eventInput.price,
+          date: new Date(args.eventInput.date)
+        })
+        return event
+          .save()
+          .then(result => {
+            console.log(result)
+            return { ...result._doc }
+          })
+          .catch(err => {
+            console.log(err)
+            throw err
+          })
+        return event
       }
-      events.push(event)
-      return event
     },
-  },
-  graphiql: true
-}))
+    graphiql: true
+  })
+)
 
-app.listen(3000)
+mongoose
+  .connect(
+    `mongodb+srv://${process.env.MONGO_USER}:${
+      process.env.MONGO_PASSWORD
+    }@cluster0-7vypg.mongodb.net/${process.env.MONGO_DB}?retryWrites=true`
+  )
+  .then(() => app.listen(3000))
+  .catch(console.log)
